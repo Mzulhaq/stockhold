@@ -1,8 +1,8 @@
 # StockHold
 
-**In progress — milestone 1: runnable inventory foundation.** The current API creates and reads fixed inventory counters. Reservation lifecycles, expiry recovery, concurrency demonstrations and the final verification report are planned in subsequent increments; they are not implemented yet.
+**In progress — milestone 2: reservation lifecycle.** The API supports inventory, holds, idempotent request replay, confirmation, cancellation and expiry checks on actions. A bounded expiry sweeper, invariant audit command, concurrency demonstrations and the final verification report are planned for subsequent increments.
 
-StockHold will demonstrate how SQL transactions prevent competing requests from allocating the same inventory. See the [design and milestone plan](docs/design.md). It is a local educational service using synthetic products, with no authentication, payment processing or production deployment.
+StockHold uses SQL transactions to preserve inventory while reservations change state. See the [design and milestone plan](docs/design.md). It is a local educational service using synthetic products, with no authentication, payment processing or production deployment.
 
 ## Run the foundation
 
@@ -14,7 +14,8 @@ python -m venv .venv
 source .venv/bin/activate
 # Windows PowerShell instead:
 # .\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev]"
+python -m pip install -r requirements.lock
+python -m pip install --no-deps -e .
 stockhold serve
 ```
 
@@ -31,3 +32,15 @@ python -m ruff format --check .
 Tests use temporary SQLite databases by default. `TEST_DATABASE_URL` optionally selects a disposable PostgreSQL database; tests delete their own test tables during setup/teardown, so use a dedicated test database. CI exercises both engines. Never point tests at data you need to keep.
 
 The project is developed with substantial AI assistance. Commits are actual tested milestones with real timestamps. Features and measurements will be documented as they are implemented and verified.
+
+## Reserve, confirm and cancel
+
+`POST /v1/reservations` accepts `{"sku":"DEMO-ITEM","quantity":2,"ttl_seconds":300}` with an `Idempotency-Key: order-001` header. TTL defaults to 300 seconds and must be an integer 1–3,600. Keys are 1–64 ASCII letters, digits, hyphens or underscores, scoped to the SKU.
+
+The response is `{"reservation":{...},"replayed":false}` with HTTP 201 for a new hold. Repeat the same request and key to get the existing reservation with HTTP 200 and `replayed:true`. Reusing the key with a different quantity or TTL returns 409. Keys persist after terminal states; a replay never creates a fresh allocation.
+
+`GET /v1/reservations/{id}` reads the persisted state. `POST /v1/reservations/{id}/confirm` or `/cancel` accepts an empty body or `{}`. Confirming transfers reserved units to committed; cancelling returns them to available. Repeating the same completed action is idempotent. A contradictory terminal action returns 409. The invariant is `available + reserved + committed = total`, with all counters nonnegative.
+
+Database time is sampled after acquiring the product lock. At `expires_at <= now`, a held reservation cannot be confirmed: the operation commits its expiry and stock release, then returns an `expired` conflict. Replaying that hold returns its expired state. Reads do not expire rows, so an abandoned hold can remain persisted as `held` until an action or future sweep processes it. This milestone does not run a background sweeper.
+
+Each mutation locks the product before changing its reservations, counters and append-only audit rows in one transaction. PostgreSQL serializes mutations on that SKU; SQLite serializes writes across the database. A lock timeout or database failure returns 503 without SQL or credentials. This is a correctness-oriented design with no hot-SKU throughput claim. No client-supplied clock or process-local mutex controls correctness.
