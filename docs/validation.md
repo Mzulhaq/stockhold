@@ -22,6 +22,16 @@ Concurrency tests additionally use independent engines and four spawned processe
 
 ## Remote verification
 
-The complete workflow now includes SQLite on Python 3.11/3.13, PostgreSQL 17 on Python 3.11, Windows on Python 3.11, and the nonroot Docker demo with external networking disabled. Docker is not installed locally; the container run must pass remotely before completion.
+All five jobs in [run 45283764996](https://github.com/Mzulhaq/stockhold/actions/runs/45283764996) passed at implementation commit `f9b359525049a00b90735f29bb8cccb543c5f4e0`:
+
+| Job | Verified checks |
+| --- | --- |
+| Python 3.11 / SQLite, Linux | Locked install, dependency check, Ruff, tests with coverage, HTTP demo, source/wheel build |
+| Python 3.13 / SQLite, Linux | Same checks on Python 3.13 |
+| Python 3.11 / PostgreSQL 17, Linux | Same checks, with database tests against PostgreSQL; standalone demo still uses SQLite |
+| Python 3.11 / Windows | Locked installation, tests and HTTP demo |
+| Container | `docker build -t stockhold .` and `docker run --rm --network none stockhold` |
+
+Docker is not installed locally; its build and nonroot, network-disabled HTTP demo were verified in GitHub Actions. These checks establish the documented scenarios in the named environments, not production reliability or performance. Subsequent documentation commits run the same [CI workflow](https://github.com/Mzulhaq/stockhold/actions/workflows/ci.yml).
 
 The reservation and recovery implementation passed 78 local tests. PostgreSQL CI initially exposed a multiprocessing test-harness bug: converting a SQLAlchemy URL to text masked its password. The fix passes the picklable URL object in memory without logging or saving credentials. [Run 45282568554](https://github.com/Mzulhaq/stockhold/actions/runs/45282568554) then passed all three SQLite/PostgreSQL jobs at commit `16f8d046175f440468bb565e5384b1fd8a8ec130`. The earlier failed run remains in Git history; it was not hidden or rewritten.

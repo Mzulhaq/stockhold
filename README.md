@@ -1,6 +1,6 @@
 # StockHold
 
-**Release candidate — implementation and local demo verified; final packaging and container CI verification in progress.** StockHold is a compact inventory reservation API with transactional holds, per-SKU idempotency, expiry recovery and an inspectable audit trail.
+StockHold is a compact inventory reservation API with transactional holds, per-SKU idempotency, expiry recovery and an inspectable audit trail. **Verified:** 79 tests, a real HTTP demo, clean wheel installation, and CI covering SQLite, PostgreSQL, Windows and Docker. See the [validation evidence](docs/validation.md) for scope and results.
 
 StockHold uses SQL transactions to preserve inventory while reservations change state. See the [design and milestone plan](docs/design.md). It is a local educational service using synthetic products, with no authentication, payment processing or production deployment.
 
