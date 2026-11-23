@@ -248,7 +248,8 @@ def test_audit_insert_failure_rolls_back_reservation_and_transition(db):
 
 def test_processes_allocate_only_available_stock_with_independent_engines(db):
     db.create_product("PROCESS", 2)
-    database_url = str(db.engine.url)
+    # Pass the picklable URL object; str(URL) masks its password and breaks PostgreSQL.
+    database_url = db.engine.url
     context = multiprocessing.get_context("spawn")
     with ProcessPoolExecutor(max_workers=4, mp_context=context) as pool:
         results = list(pool.map(_process_reserve, [database_url] * 4, [f"p-{i}" for i in range(4)]))
