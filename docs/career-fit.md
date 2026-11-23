@@ -1,6 +1,6 @@
 # Career fit: Python backend and transaction skills
 
-StockHold is intended to add a transactional SQL and concurrency example to a portfolio that already covers webhook reliability, data ingestion, retrieval, and model serving. Its central exercise is preserving inventory counters and reservation state when requests compete. This fills a useful backend topic alongside the other projects, but the reservation lifecycle and concurrency work are still planned. At this milestone, the API only creates and reads inventory counters; do not present reservations, expiry, or concurrency behavior as completed.
+StockHold adds a transactional SQL and concurrency example to a portfolio that already covers webhook reliability, data ingestion, retrieval, and model serving. Its central exercise is preserving inventory counters and reservation state when requests compete. It implements the reservation lifecycle, idempotency, expiry recovery and invariant checking. The README identifies the current development milestone; no production experience or performance outcome is implied.
 
 ## Role examples reviewed November 23, 2026
 
@@ -12,4 +12,4 @@ As a separate early-career example, SimplifyNext lists an **AI Engineer (Graduat
 
 ## How to present StockHold
 
-When the planned lifecycle work is implemented and tested, use it to explain database transactions, idempotency, invariants, and the difference between SQLite's database-wide write serialization and PostgreSQL's per-SKU row locking. Until then, describe the repository as in progress and limit claims to the implemented inventory foundation. There are no verified outcome or performance measurements yet, and StockHold has no AI feature. None of these postings or this project establishes an individual's eligibility or fit; check each live listing and its requirements before applying.
+Use the implementation to explain database transactions, idempotency, invariants, and the difference between SQLite's database-wide write serialization and PostgreSQL's per-SKU row locking. Refer to recorded validation for actual test results and limitations. StockHold has no AI feature, external deployment or performance benchmark. None of these postings or this project establishes an individual's eligibility or fit; check each live listing and its requirements before applying.

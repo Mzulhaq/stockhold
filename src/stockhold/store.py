@@ -2,6 +2,7 @@
 
 import re
 import uuid
+from collections import defaultdict
 
 from sqlalchemy import (
     BigInteger,
@@ -378,3 +379,83 @@ class Database:
         if deferred_error is not None:
             raise deferred_error
         return result
+
+    def expire(self, limit=100):
+        """Process at most limit candidates, committing each release independently."""
+        if type(limit) is not int or not 1 <= limit <= 1000:
+            raise ValueError("Sweep limit must be an integer between 1 and 1000")
+        with self.engine.connect() as conn:
+            cutoff = self._now(conn)
+            candidates = (
+                conn.execute(
+                    select(reservations.c.id)
+                    .where(reservations.c.state == "held", reservations.c.expires_at <= cutoff)
+                    .order_by(reservations.c.expires_at, reservations.c.id)
+                    .limit(limit)
+                )
+                .scalars()
+                .all()
+            )
+        expired, released = 0, 0
+        for identifier in candidates:
+            with self.engine.begin() as conn:
+                self._lock_reservation_product(conn, identifier)
+                now = self._now(conn)
+                held = (
+                    conn.execute(select(reservations).where(reservations.c.id == identifier))
+                    .mappings()
+                    .one()
+                )
+                if held["state"] == "held" and held["expires_at"] <= now:
+                    self._finish(conn, held, "expired", now)
+                    expired += 1
+                    released += held["quantity"]
+        return {"examined": len(candidates), "expired": expired, "released_units": released}
+
+    def audit(self):
+        """Compare counters and transition history from one consistent read snapshot."""
+        with self.engine.connect() as conn:
+            if self.engine.dialect.name == "postgresql":
+                conn = conn.execution_options(isolation_level="REPEATABLE READ")
+            with conn.begin():
+                if self.engine.dialect.name == "sqlite":
+                    # sqlite3 legacy mode doesn't BEGIN on SELECT. Start a real read snapshot.
+                    conn.exec_driver_sql("BEGIN")
+                stock = conn.execute(select(products)).mappings().all()
+                holds = conn.execute(select(reservations)).mappings().all()
+                events = (
+                    conn.execute(select(audit_events).order_by(audit_events.c.id)).mappings().all()
+                )
+        totals = defaultdict(lambda: {"held": 0, "confirmed": 0})
+        histories = defaultdict(list)
+        for event_row in events:
+            histories[event_row["reservation_id"]].append(event_row)
+        violations = []
+        for held in holds:
+            if held["state"] in {"held", "confirmed"}:
+                totals[held["sku"]][held["state"]] += held["quantity"]
+            expected = [(None, "held", held["created_at"])]
+            if held["state"] != "held":
+                expected.append(("held", held["state"], held["updated_at"]))
+            history = histories[held["id"]]
+            actual = [
+                (item["from_state"], item["to_state"], item["occurred_at"]) for item in history
+            ]
+            if actual != expected or any(item["sku"] != held["sku"] for item in history):
+                violations.append({"reservation_id": held["id"], "error": "history_mismatch"})
+        for item in stock:
+            reserved = totals[item["sku"]]["held"]
+            committed = totals[item["sku"]]["confirmed"]
+            if (
+                item["reserved"] != reserved
+                or item["committed"] != committed
+                or item["available"] != item["total"] - reserved - committed
+            ):
+                violations.append({"sku": item["sku"], "error": "counter_mismatch"})
+        return {
+            "ok": not violations,
+            "products_checked": len(stock),
+            "reservations_checked": len(holds),
+            "audit_events_checked": len(events),
+            "violations": violations,
+        }

@@ -20,19 +20,30 @@ def port(value):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Serve the local StockHold API")
+    parser = argparse.ArgumentParser(description="Serve, recover and audit local inventory")
     commands = parser.add_subparsers(dest="command", required=True)
     serve = commands.add_parser("serve", help="Run the local API")
-    serve.add_argument(
-        "--database-url", default=os.getenv("STOCKHOLD_DATABASE_URL", "sqlite:///stockhold.db")
-    )
+    expire = commands.add_parser("expire", help="Release a bounded batch of expired holds")
+    expire.add_argument("--limit", type=int, default=100)
+    audit = commands.add_parser("audit", help="Check inventory and transition-history invariants")
+    for command in (serve, expire, audit):
+        command.add_argument(
+            "--database-url", default=os.getenv("STOCKHOLD_DATABASE_URL", "sqlite:///stockhold.db")
+        )
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=port, default=8000)
     args = parser.parse_args(argv)
     database = None
     try:
         database = Database(args.database_url)
-        uvicorn.run(create_app(database), host=args.host, port=args.port, access_log=False)
+        if args.command == "expire":
+            print(json.dumps(database.expire(args.limit)))
+        elif args.command == "audit":
+            result = database.audit()
+            print(json.dumps(result))
+            return 0 if result["ok"] else 1
+        else:
+            uvicorn.run(create_app(database), host=args.host, port=args.port, access_log=False)
         return 0
     except (ValueError, SQLAlchemyError, OSError):
         print(
